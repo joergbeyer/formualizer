@@ -1211,13 +1211,16 @@ where
         Ok(())
     }
 
+    /// Renames a sheet and ensures all dependent formulas are healed.
+    ///
+    /// # Implementation Note: Ordering
+    /// We update the Storage layer *before* the Graph. This ensures that when the Graph
+    /// triggers re-evaluations during the rename (via `rebind_vertex_to_sheet`), the
+    /// Evaluator can already find the data under the new name in the Arrow buffers.
     pub fn rename_sheet(&mut self, sheet_id: SheetId, new_name: &str) -> Result<(), ExcelError> {
-        // 1. Capture the old name
         let old_name = self.graph.sheet_name(sheet_id).to_string();
 
-        // 2. Update the Storage FIRST (The Data Layer)
-        // We do this first so that if the Graph triggers an evaluation during the rename,
-        // the data is already findable under the new name.
+        // 1. Update Storage
         if let Some(asheet) = self
             .arrow_sheets
             .sheets
@@ -1227,11 +1230,10 @@ where
             asheet.name = std::sync::Arc::<str>::from(new_name);
         }
 
-        // 3. Update the Registry & Formulas SECOND (The Metadata layer)
-        // This will trigger rebind_vertex_to_sheet and mark things as dirty.
+        // 2. Update Metadata & Heal Formulas
         self.graph.rename_sheet(sheet_id, new_name)?;
 
-        // 4. Force re-evaluation of current sheet vertices
+        //invalidate cache
         let sheet_vertices: Vec<VertexId> = self.graph.vertices_in_sheet(sheet_id).collect();
         for v_id in sheet_vertices {
             self.graph.mark_vertex_dirty(v_id);
