@@ -66,6 +66,14 @@ optional = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { workspace = true }
 glob = "0.3"
+criterion = { version = "0.5", features = ["html_reports"] }
+#formualizer-parse = { path = "../formualizer-parse" }
+#formualizer-common = { path = "../formualizer-common" }
+
+[[bench]]
+name = "sheet_ops"
+harness = false
+
 
 [features]
 default = []

@@ -1212,12 +1212,31 @@ where
     }
 
     pub fn rename_sheet(&mut self, sheet_id: SheetId, new_name: &str) -> Result<(), ExcelError> {
+        // 1. Capture the old name
         let old_name = self.graph.sheet_name(sheet_id).to_string();
-        self.graph.rename_sheet(sheet_id, new_name)?;
-        self.ensure_arrow_sheet(&old_name);
-        if let Some(asheet) = self.arrow_sheets.sheet_mut(&old_name) {
+
+        // 2. Update the Storage FIRST (The Data Layer)
+        // We do this first so that if the Graph triggers an evaluation during the rename,
+        // the data is already findable under the new name.
+        if let Some(asheet) = self
+            .arrow_sheets
+            .sheets
+            .iter_mut()
+            .find(|s| s.name.as_ref() == old_name)
+        {
             asheet.name = std::sync::Arc::<str>::from(new_name);
         }
+
+        // 3. Update the Registry & Formulas SECOND (The Metadata layer)
+        // This will trigger rebind_vertex_to_sheet and mark things as dirty.
+        self.graph.rename_sheet(sheet_id, new_name)?;
+
+        // 4. Force re-evaluation of current sheet vertices
+        let sheet_vertices: Vec<VertexId> = self.graph.vertices_in_sheet(sheet_id).collect();
+        for v_id in sheet_vertices {
+            self.graph.mark_vertex_dirty(v_id);
+        }
+
         Ok(())
     }
 
